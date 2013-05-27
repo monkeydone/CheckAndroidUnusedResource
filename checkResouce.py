@@ -15,6 +15,9 @@ import subprocess
 """
 
 
+excludelist=["classes.dex","\\\.class",".svn","test","Test","Sample","sample","import"]
+handleList=[]
+
 def processCmd(cmd):
     p=subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE)
     return p.stdout.read()
@@ -42,12 +45,8 @@ class ResourceObject:
         self.java_reference=r"R.%s.%s\b"%(resourcetype,self.resourcename)
         self.xml_reference=r"@%s/%s\b"%(resourcetype,self.resourcename)
     def getResourceName(self,resourcepath):
-        #filename=resourcepath.split("/")[-1]
-        #print filename
-        #print filename.split(".")[0]
         return resourcepath.split("/")[-1].split(".")[0]
 
-excludelist=["classes.dex","\\\.class",".svn","test","Test","Sample","sample","import"]
 
 def checkResourceFileReference(reference,destpath):
     return checkFileReference(reference,destpath)
@@ -74,7 +73,7 @@ def checkFileReference(reference,destpath):
     #print excludecmd
     cmd="egrep '%s' %s -r %s"%(reference,destpath,excludecmd)
     a=processCmd(cmd)
-    print reference,cmd,a,a.split("\n")
+    #print reference,cmd,a,a.split("\n")
     return a
 
 
@@ -105,8 +104,14 @@ def handleSource(source_list,project_path):
             destpath=i.sourcepath.replace(i.sourcename,"test_%s"%(i.sourcename))
             cmd="mv %s %s"%(srcpath,destpath)
             print "move %s to %s"%(srcpath,destpath)
+            i=Information(srcpath,"source")
+            handleList.append(i)
             #utils.processCmd(cmd)
 
+class Information:
+    def __init__(self,filepath,filetype):
+        self.filepath=filepath
+        self.filetype=filetype
 def handleResource(resource_list,project_path):
     #drawable_list=androidSourceStruct.drawable_png_map["/home/lijunjie/work/android/MxBrowser6/res/drawable-hdpi"]
     for i in resource_list:
@@ -114,15 +119,17 @@ def handleResource(resource_list,project_path):
         if i.resourcename.startswith("test"):
             continue
         a=checkResourceFileReference(i.java_reference,project_path)
-        #print "ttt",i.java_reference,"result=",a
+        print "ttt",i.java_reference,"result=",a
         if a.strip() == "":
             b=checkResourceFileReference(i.xml_reference,project_path)
-            #print "bbb",i.xml_reference,"result=",b
+            print "bbb",i.xml_reference,"result=",b
             if b.strip() == "":
                 srcpath=i.resourcepath
                 destpath=i.resourcepath.replace(i.resourcename,"test_%s"%(i.resourcename))
                 cmd="mv %s %s"%(srcpath,destpath)
                 print "move %s to %s"%(srcpath,destpath)
+                i=Information(srcpath,"res")
+                handleList.append(i)
                 #print cmd
                 
                 #utils.processCmd(cmd)
@@ -156,7 +163,6 @@ class AndroidSourceStruct:
         handleResource(layout_list,self.path)
         for i in self.drawable_png_map.itervalues():
             handleResource(i,self.path)
-        pass
 
     def createResourceObject(self,resource_path,resource_type):
         ro=ResourceObject(resource_path,resource_type)
@@ -214,73 +220,13 @@ def main():
     import sys
     if len(sys.argv)==2:
         ass=AndroidSourceStruct(sys.argv[1])
-        #handleSource(ass.source_files,ass.path)
         ass.handleResource()
+        print len(handleList)
+
+    else:
+        print "./checkResource.py /tmp/your_project_path"
+
 
     print sys.argv
-
-
-    pass
-def testAllDrawable():
-    path="./dest/svnproject/res/drawable/"
-    for i in getAllFiles(path,"png"):
-        for j in i.split(":"):
-            print j
-
-
-def testCheckResource():
-    path="/home/lijunjie/work/android/MxBrowser6/"
-    res1="/home/lijunjie/work/android/MxBrowser6//res/layout/download_view_bottom.xml"
-    a=ResourceObject("/home/lijunjie/work/android/MxBrowser6/res/drawable-mdpi/find_btn_close_panel.png","drawable")
-    b=ResourceObject("/home/lijunjie/work/android/MxBrowser6/res/drawable-mdpi/find_btn_close_panel11.9.png","drawable")
-    #handleResource([ResourceObject(res1,"drawable"),a,b],path)
-    handleResource([ResourceObject(res1,"layout")],path)
-    #a,b,c=checkReference(path,filename)
-    #print a,b,c
-
-def testCheckFileReference():
-    a=checkFileReference("@drawable/account_avatar","./dest/svnproject/")
-
-    print a
-def testReferenceObject():
-    a=ResourceObject("./dest/svnproject/res/drawable-mdpi/find_btn_close_panel.png","drawable")
-    b=ResourceObject("./dest/svnproject/res/drawable-mdpi/find_btn_close_panel.9.png","drawable")
-    print a.__dict__
-    print b.__dict__
-
-def testAndroidSourceStruct():
-    androidSourceStruct=AndroidSourceStruct("/home/lijunjie/work/android/MxBrowser6")
-    #print androidSourceStruct.__dict__
-    #print androidSourceStruct.source_files
-    #print androidSourceStruct.layout_files
-    #print "map",androidSourceStruct.drawable_png_map
-    drawable_list=androidSourceStruct.drawable_png_map["/home/lijunjie/work/android/MxBrowser6/res/drawable-hdpi"]
-    #handleResource(drawable_list,androidSourceStruct.path)
-    layout_list=androidSourceStruct.layout_files
-    handleResource(layout_list,androidSourceStruct.path)
-
-    source_list=androidSourceStruct.source_files
-    androidSourceStruct.handleResource()
-    #for i in source_list:
-        #print i.__dict__
-    #handleSource(source_list,androidSourceStruct.path)
-                
-def testCheckSource():
-    #sourcepath="/home/lijunjie/work/android/MxBrowser6/src/com/mx/browser/clientviews/MxSlidableScreenClientView.java"
-    sourcepath2="/home/lijunjie/work/android/MxBrowser6/src/com/mx/browser/clientviews/MxNavigationClientView.java"
-    sourcepath="/home/lijunjie/work/android/MxBrowser6//src/com/mx/core/MxMenuBase.java"
-    project_path="/home/lijunjie/work/android/MxBrowser6/"
-    handleSource([SourceObject(sourcepath),SourceObject(sourcepath2)],project_path)
-
-
-
-
-
 if __name__== "__main__":
-    #main()
-    testCheckResource()
-    #testCheckSource()
-    #testReferenceObject()
-    #testAllDrawable()
-    #testAndroidSourceStruct()
-    #testCheckFileReference()
+    main()
