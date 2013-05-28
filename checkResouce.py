@@ -6,6 +6,9 @@ import os
 import re
 import glob
 import subprocess
+import utils
+import sys
+from optparse import OptionParser
 
 
 """
@@ -15,8 +18,9 @@ import subprocess
 """
 
 
-excludelist=["classes.dex","\\\.class",".svn","test","Test","Sample","sample","import"]
+excludelist=["classes.dex","\/bin\/","\\\.class",".svn","test","Test","Sample","sample","import"]
 handleList=[]
+discardList=[]
 
 def processCmd(cmd):
     p=subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE)
@@ -32,13 +36,13 @@ def getAllFiles(path,suffix):
                 a.append(x)
     return a
 
-class SourceObject:
+class SourceObject(utils.Listener):
     def __init__(self,sourcepath):
         self.sourcepath=sourcepath
         self.sourcename=sourcepath.split("/")[-1].split(".")[0]
 
 
-class ResourceObject:
+class ResourceObject(utils.Listener):
     def __init__(self,resourcepath,resourcetype):
         self.resourcepath=resourcepath
         self.resourcename=self.getResourceName(resourcepath)
@@ -50,6 +54,17 @@ class ResourceObject:
 
 def checkResourceFileReference(reference,destpath):
     return checkFileReference(reference,destpath)
+
+def checkDiscardFile(currentList,discardList):
+    c=[]
+    for i in currentList.split("\n"):
+        if i is not "":
+            c.append(i)
+    a=set(c)
+    b=set(discardList)
+    #print "currentList=",currentList,"a=",a,",b=",b,",discardList=",discardList
+    return len(a.difference(b))==0
+
 
 def checkSourceFileReference(source,sourcepath,destpath):
     result=""
@@ -71,7 +86,7 @@ def checkFileReference(reference,destpath):
     for i in excludelist:
         excludecmd+=" | grep -v %s"%(i)
     #print excludecmd
-    cmd="egrep '%s' %s -r %s"%(reference,destpath,excludecmd)
+    cmd="egrep '%s' %s -rl %s"%(reference,destpath,excludecmd)
     a=processCmd(cmd)
     #print reference,cmd,a,a.split("\n")
     return a
@@ -86,7 +101,7 @@ def isNotAllow(filepath,excludelist):
             break
     return a
 
-def handleSource(source_list,project_path):
+def handleSource(source_list,project_path,run_flag):
     for i in source_list:
         #print i.__dict__
         if "test" in i.sourcepath:
@@ -106,37 +121,41 @@ def handleSource(source_list,project_path):
             print "move %s to %s"%(srcpath,destpath)
             i=Information(srcpath,"source")
             handleList.append(i)
-            #utils.processCmd(cmd)
+            if run_flag:
+                processCmd(cmd)
 
-class Information:
+class Information(utils.Listener):
     def __init__(self,filepath,filetype):
         self.filepath=filepath
         self.filetype=filetype
-def handleResource(resource_list,project_path):
+def handleResource(resource_list,project_path,run_flag):
     #drawable_list=androidSourceStruct.drawable_png_map["/home/lijunjie/work/android/MxBrowser6/res/drawable-hdpi"]
     for i in resource_list:
         #print i.resourcename,i.resourcename.startswith("test")
         if i.resourcename.startswith("test"):
             continue
         a=checkResourceFileReference(i.java_reference,project_path)
-        print "ttt",i.java_reference,"result=",a
+        #print "ttt",i.java_reference,"result=",a
         if a.strip() == "":
             b=checkResourceFileReference(i.xml_reference,project_path)
-            print "bbb",i.xml_reference,"result=",b
-            if b.strip() == "":
+            c=checkDiscardFile(b,discardList)
+            #print "bbb",i.xml_reference,"result=",b
+            if b.strip() == "" or c:
                 srcpath=i.resourcepath
                 destpath=i.resourcepath.replace(i.resourcename,"test_%s"%(i.resourcename))
                 cmd="mv %s %s"%(srcpath,destpath)
                 print "move %s to %s"%(srcpath,destpath)
-                i=Information(srcpath,"res")
-                handleList.append(i)
+                d=i.resourcepath.replace("//","/")
+                discardList.append(d)
+                info=Information(srcpath,"res")
+                handleList.append(info)
                 #print cmd
-                
-                #utils.processCmd(cmd)
+                if run_flag:
+                    processCmd(cmd)
      
 
 
-class AndroidSourceStruct:
+class AndroidSourceStruct(utils.Listener):
     def __init__(self,path):
         self.path=path
         self.source_dir="%s/src"%(path)
@@ -144,6 +163,8 @@ class AndroidSourceStruct:
         self.drawable_list=self.getDrawableDirList(path)
         self.drawable_xml_map={}
         self.drawable_png_map={}
+        self.test=False
+        self.run=False
         for i in self.drawable_list:
             drawable_xml_files,drawable_png_files=self.getDrawableFileList(i)
             self.drawable_xml_map[i]=self.createResourceObjectList(drawable_xml_files,"drawable")
@@ -151,6 +172,10 @@ class AndroidSourceStruct:
 
         self.layout_files=self.createResourceObjectList(self.getLayoutFileList(path),"layout")
         self.source_files=self.getSourceFileList(path)
+    def setTest(self,flag):
+        self.test=flag
+    def setRun(self,flag):
+        self.run=flag
     def createResourceObjectList(self,resource_files,resource_type):
         a=[]
         for i in resource_files:
@@ -159,10 +184,12 @@ class AndroidSourceStruct:
 
     def handleResource(self):
         layout_list=self.layout_files
-        handleSource(self.source_files,self.path)
-        handleResource(layout_list,self.path)
+        handleSource(self.source_files,self.path,self.run)
+        handleResource(layout_list,self.path,self.run)
+        for i in self.drawable_xml_map.itervalues():
+            handleResource(i,self.path,self.run)
         for i in self.drawable_png_map.itervalues():
-            handleResource(i,self.path)
+            handleResource(i,self.path,self.run)
 
     def createResourceObject(self,resource_path,resource_type):
         ro=ResourceObject(resource_path,resource_type)
@@ -216,17 +243,46 @@ def getResourceDirs(path,resourcename):
                 a.append(x)
     return a
 
-def main():
-    import sys
-    if len(sys.argv)==2:
-        ass=AndroidSourceStruct(sys.argv[1])
+def handleParameters(fakeArgs):
+    msg_usage="%prog [ -p <android_path> ]  [ -t ] [ -r ] "
+
+    optParser=OptionParser(msg_usage)
+    optParser.add_option("-p","--android_path",action="store",type="string",dest="android_path",default="")
+    optParser.add_option("-t","--test",action="store_true",dest="test",default=False, help="default False")
+    optParser.add_option("-r","--run",action="store_true",dest="run",default=False, help="default False")
+    options,args=optParser.parse_args(fakeArgs)
+    if not options.test and not options.run:
+        optParser.print_help()
+    print options,args
+    return options,args
+
+
+def main(arg):
+    options,args=handleParameters(arg)
+    if options.run:
+        ass=AndroidSourceStruct(options.android_path)
         ass.handleResource()
-        print len(handleList)
-
+        ass.setRun(True)
+        print "总共有%s个文件需要处理"%(len(handleList))
+        for i in handleList:
+            print i
+    elif options.test:
+        ass=AndroidSourceStruct(options.android_path)
+        ass.handleResource()
+        ass.setTest(True)
+        print "总共有%s个文件需要处理"%(len(handleList))
+        for i in handleList:
+            print i
     else:
-        print "./checkResource.py /tmp/your_project_path"
+        pass
 
 
-    print sys.argv
+
 if __name__== "__main__":
-    main()
+    arg=sys.argv[1:]
+    if len(arg)==0:
+        arg.append("--help")
+    #handleParameters(arg)
+    main(arg)
+    
+    #main()
