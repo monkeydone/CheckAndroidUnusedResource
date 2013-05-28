@@ -118,7 +118,8 @@ def handleSource(source_list,project_path,run_flag):
             srcpath=i.sourcepath
             destpath=i.sourcepath.replace(i.sourcename,"test_%s"%(i.sourcename))
             cmd="mv %s %s"%(srcpath,destpath)
-            print "move %s to %s"%(srcpath,destpath)
+            if run_flag:
+                print "move %s to %s"%(srcpath,destpath)
             i=Information(srcpath,"source")
             handleList.append(i)
             if run_flag:
@@ -144,7 +145,8 @@ def handleResource(resource_list,project_path,run_flag):
                 srcpath=i.resourcepath
                 destpath=i.resourcepath.replace(i.resourcename,"test_%s"%(i.resourcename))
                 cmd="mv %s %s"%(srcpath,destpath)
-                print "move %s to %s"%(srcpath,destpath)
+                if run_flag:
+                    print "move %s to %s"%(srcpath,destpath)
                 d=i.resourcepath.replace("//","/")
                 discardList.append(d)
                 info=Information(srcpath,"res")
@@ -261,15 +263,15 @@ def main(arg):
     options,args=handleParameters(arg)
     if options.run:
         ass=AndroidSourceStruct(options.android_path)
-        ass.handleResource()
         ass.setRun(True)
+        ass.handleResource()
         print "总共有%s个文件需要处理"%(len(handleList))
         for i in handleList:
             print i
     elif options.test:
         ass=AndroidSourceStruct(options.android_path)
-        ass.handleResource()
         ass.setTest(True)
+        ass.handleResource()
         print "总共有%s个文件需要处理"%(len(handleList))
         for i in handleList:
             print i
